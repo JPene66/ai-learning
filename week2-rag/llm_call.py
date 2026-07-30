@@ -17,11 +17,12 @@ from search import hybrid_search
 from storing import get_collection
 
 
-def call_llm(prompt):
+def call_llm(prompt, ask_fn=None):
     """A thin wrapper around helpers.ask() - kept as its own function so
     this step is easy to swap out later (e.g. for a different model, or to
     add retry logic) without touching any other file in the pipeline."""
-    return ask(prompt)
+    ask_fn = ask_fn or ask
+    return ask_fn(prompt)
 
 
 if __name__ == "__main__":

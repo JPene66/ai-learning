@@ -9,9 +9,19 @@ it doesn't duplicate their logic, it just calls them in the right order.
 """
 
 import json
-import uuid
+import hashlib
 from document_loader import load_document
 from text_cleaner import clean_text
+
+
+def stable_chunk_id(source, index):
+    """
+    A repeatable ID for a chunk: the same document at the same position always
+    gets the same ID. The source is hashed so that long file paths and URLs
+    (which can contain anything) can't produce awkward IDs.
+    """
+    digest = hashlib.sha1(source.encode("utf-8")).hexdigest()[:12]
+    return f"{digest}-{index}"
 
 
 def chunk_text(text, chunk_size=800, overlap=100):
@@ -47,13 +57,19 @@ def chunk_text(text, chunk_size=800, overlap=100):
     return [c for c in chunks if c]  # drop any empty chunks
 
 
-def ingest_source(source, chunk_size=800, overlap=100):
+def ingest_source(source, chunk_size=800, overlap=100, source_name=None):
     """
     Runs one source through the full pipeline: load -> clean -> chunk.
     Returns a list of chunk records, each ready to be embedded and stored
     in a vector database in the next step.
+
+    source_name overrides the label stored on each chunk. A Streamlit upload
+    has to be written to a temporary file before it can be parsed, and without
+    this the case file would cite "/var/folders/xy/tmp8h2k.pdf" instead of
+    "witness_statement.pdf".
     """
     doc = load_document(source)
+    label = source_name or doc["source"]
 
     # PDFs carry page-level data, which lets clean_text remove repeated
     # headers/footers - other doc types just get whitespace/encoding cleanup.
@@ -65,15 +81,18 @@ def ingest_source(source, chunk_size=800, overlap=100):
     chunk_records = []
     for i, chunk in enumerate(raw_chunks):
         chunk_records.append({
-            "chunk_id": str(uuid.uuid4()),
-            "source": doc["source"],
+            # A deterministic ID (source + position) instead of a random UUID,
+            # so re-ingesting the same document UPDATES its chunks via upsert
+            # rather than storing a second copy of everything.
+            "chunk_id": stable_chunk_id(label, i),
+            "source": label,
             "doc_type": doc["doc_type"],
             "chunk_index": i,
             "text": chunk,
             "char_count": len(chunk),
         })
 
-    print(f"Ingested {doc['source']}: {len(chunk_records)} chunks "
+    print(f"Ingested {label}: {len(chunk_records)} chunks "
           f"(from {len(cleaned_content)} cleaned characters)")
 
     return chunk_records

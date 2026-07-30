@@ -1,0 +1,19 @@
+# Secrets - never commit these
+.env
+
+# Vector store (regenerate by re-ingesting your sources)
+chroma_db/
+
+# Intermediate pipeline output
+ingested_chunks.json
+embedded_chunks.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# macOS
+.DS_Store

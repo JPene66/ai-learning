@@ -1,0 +1,13 @@
+# Case File AI - Week 2 project
+# Install with:  pip install -r requirements.txt
+
+streamlit>=1.32          # the app UI
+chromadb>=0.5            # persistent vector database
+openai>=1.30             # LLM + embedding calls (helpers.py)
+python-dotenv>=1.0       # loads OPENAI_API_KEY from .env
+
+pdfplumber>=0.11         # PDF text extraction (document_loader.load_pdf)
+beautifulsoup4>=4.12     # web article parsing (document_loader.load_web_article)
+requests>=2.31           # fetching web articles
+
+pytest>=8.0              # tests/
