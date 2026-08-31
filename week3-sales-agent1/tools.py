@@ -19,7 +19,14 @@ function, and handles exceptions" the study guide's hands-on asks for.
 
 import random
 import time
+import json
 from guardrails import is_tool_allowed
+
+try:
+    from ddgs import DDGS
+    _DDG_AVAILABLE = True
+except ImportError:
+    _DDG_AVAILABLE = False
 
 
 # --- Simulated data pools (deterministic-ish, seeded by input for reproducibility) ---
@@ -62,6 +69,106 @@ def search_web_leads(industry: str, max_results: int = 3):
          "employee_estimate": rng.choice([40, 85, 120, 210, 350])}
         for name in chosen
     ]
+
+
+# --- Tool 1b: search_real_leads (DuckDuckGo-powered, live) ---
+
+TOOL_SCHEMA_SEARCH_REAL_LEADS = {
+    "name": "search_real_leads",
+    "description": (
+        "Searches the web via DuckDuckGo for real companies in a specific country, "
+        "region, and industry. Returns structured lead dicts with company name, "
+        "description, and estimated employee count."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "industry": {"type": "string", "description": "Target sector, e.g. 'Banking'"},
+            "country": {"type": "string", "description": "Country name, e.g. 'Nigeria'"},
+            "region": {"type": "string", "description": "Region/city, e.g. 'Lagos'"},
+            "max_results": {"type": "integer", "description": "Number of leads to return (1-5)"},
+        },
+        "required": ["industry", "country"],
+    },
+}
+
+
+def search_real_leads(industry: str, country: str, region: str = "", max_results: int = 2):
+    """
+    Live lead search using DuckDuckGo.
+
+    1. Builds a targeted query string like:
+       "top banking companies in Lagos Nigeria"
+    2. Fires a DuckDuckGo text search to get raw snippets (3x the target
+       count to allow for bad/irrelevant hits that get filtered out).
+    3. Uses a cheap GPT ask_json() call to parse the raw snippets into
+       structured lead dicts: [{company, industry, country, region,
+       website, description, employee_estimate}].
+    4. Falls back to an empty list on any error so the caller's corrective
+       fallback logic handles the empty case cleanly.
+    """
+    from helpers import ask_json  # local import to avoid circular at module level
+
+    location_part = f"{region}, {country}" if region else country
+    query = f"top {industry} companies in {location_part}"
+
+    raw_snippets = []
+    if _DDG_AVAILABLE:
+        try:
+            with DDGS() as ddgs:
+                results = list(ddgs.text(query, max_results=max(max_results * 3, 6)))
+            raw_snippets = [
+                f"{r.get('title', '')} — {r.get('body', '')[:300]}"
+                for r in results
+                if r.get("title") or r.get("body")
+            ]
+        except Exception as exc:  # noqa: BLE001
+            print(f"[search_real_leads] DuckDuckGo error: {exc}")
+    else:
+        print("[search_real_leads] duckduckgo-search not installed; returning empty.")
+        return []
+
+    if not raw_snippets:
+        return []
+
+    snippets_text = "\n".join(f"{i+1}. {s}" for i, s in enumerate(raw_snippets[:15]))
+    parse_prompt = f"""From the search snippets below, extract up to {max_results} REAL companies
+that operate in the {industry} sector in {location_part}.
+
+For each company return:
+  - company: the exact company name (string)
+  - industry: "{industry}" (string)
+  - country: "{country}" (string)
+  - region: "{region}" (string)
+  - description: a 1-sentence description of what they do (string)
+  - employee_estimate: rough headcount as an integer (use 50 if unknown)
+  - source: "duckduckgo" (string)
+
+Ignore generic directory sites, news articles, or snippets that don't name a specific company.
+
+Search snippets:
+{snippets_text}
+
+Respond ONLY as valid JSON: {{"leads": [list of company objects as described above]}}"""
+
+    try:
+        parsed = ask_json(parse_prompt)
+        leads = parsed.get("leads", [])
+        # Sanitise: make sure every required key exists
+        clean = []
+        for lead in leads[:max_results]:
+            if isinstance(lead, dict) and lead.get("company"):
+                lead.setdefault("industry", industry)
+                lead.setdefault("country", country)
+                lead.setdefault("region", region)
+                lead.setdefault("source", "duckduckgo")
+                lead.setdefault("employee_estimate", 50)
+                lead.setdefault("description", "")
+                clean.append(lead)
+        return clean
+    except Exception as exc:  # noqa: BLE001
+        print(f"[search_real_leads] GPT parse error: {exc}")
+        return []
 
 
 # --- Tool 2: enrich_company ---
@@ -134,6 +241,7 @@ def book_meeting(company: str, requested_day: str = "next available slot"):
 
 TOOL_REGISTRY = {
     "search_web_leads": (search_web_leads, TOOL_SCHEMA_SEARCH_WEB_LEADS),
+    "search_real_leads": (search_real_leads, TOOL_SCHEMA_SEARCH_REAL_LEADS),
     "enrich_company": (enrich_company, TOOL_SCHEMA_ENRICH_COMPANY),
     "check_crm_duplicate": (check_crm_duplicate, TOOL_SCHEMA_CHECK_CRM_DUPLICATE),
     "book_meeting": (book_meeting, TOOL_SCHEMA_BOOK_MEETING),

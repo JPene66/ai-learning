@@ -10,7 +10,7 @@ nicely to respect.
 
 # --- Allow-list: only these tools may ever be called ---
 ALLOWED_TOOLS = {
-    "search_web_leads", "enrich_company", "check_crm_duplicate",
+    "search_web_leads", "search_real_leads", "enrich_company", "check_crm_duplicate",
     "query_similar_deals", "lookup_case_study", "check_pricing_faq",
     "book_meeting", "send_outreach_message",
 }
@@ -24,6 +24,7 @@ MAX_AUTONOMOUS_DISCOUNT_PCT = 15  # anything above this requires human approval
 # --- Loop guardrails ---
 MAX_CLOSE_ITERATIONS = 6
 MAX_SOURCE_RETRIES = 2
+MAX_WEB_SEARCHES_PER_SOURCE_RUN = 3  # caps DDG calls per single source-node run
 
 # --- Simple PII pattern flags (deliberately conservative - false positives are safer than misses) ---
 import re

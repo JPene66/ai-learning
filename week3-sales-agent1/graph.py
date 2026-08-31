@@ -45,6 +45,13 @@ def _after_qualify_router(state: dict) -> str:
     return "close" if state.get("deal_stage") == "Qualified" else "__end__"
 
 
+def _after_source_router(state: dict) -> str:
+    # Source can genuinely come back empty now that search is real (a
+    # narrow demographic, a quiet news day, a search that just misses) -
+    # don't waste a Qualify call scoring a lead that doesn't exist.
+    return "qualify" if state.get("deal_stage") == "Sourced" else "__end__"
+
+
 def build_graph(checkpointer=None):
     graph = StateGraph(AgentState)
 
@@ -57,7 +64,7 @@ def build_graph(checkpointer=None):
         "source": "source", "qualify": "qualify", "close": "close",
         "hitl": "hitl", "__end__": END,
     })
-    graph.add_edge("source", "qualify")
+    graph.add_conditional_edges("source", _after_source_router, {"qualify": "qualify", "__end__": END})
     graph.add_conditional_edges("qualify", _after_qualify_router, {"close": "close", "__end__": END})
     graph.add_edge("close", END)
     graph.add_edge("hitl", END)

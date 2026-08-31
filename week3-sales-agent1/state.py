@@ -24,6 +24,9 @@ class AgentState(TypedDict):
 
     # --- Source stage output ---
     lead: Dict[str, Any]                 # the current lead's firmographic data
+    country: Optional[str]               # target country for sourcing (e.g. "Nigeria")
+    region: Optional[str]                # target region/city (e.g. "Lagos")
+    source_max_leads: int                # how many real leads to fetch (1-5, default 2)
     source_channels_tried: Annotated[List[str], operator.add]
     source_confidence: float             # used by the CRAG-style fallback check
 
@@ -60,6 +63,9 @@ def new_lead_state(lead_id: str, initial_lead: Optional[Dict[str, Any]] = None) 
         lead_id=lead_id,
         deal_stage="New",
         lead=initial_lead or {},
+        country=initial_lead.get("country") if initial_lead else None,
+        region=initial_lead.get("region") if initial_lead else None,
+        source_max_leads=initial_lead.get("max_leads", 2) if initial_lead else 2,
         source_channels_tried=[],
         source_confidence=0.0,
         bant_medicc={},

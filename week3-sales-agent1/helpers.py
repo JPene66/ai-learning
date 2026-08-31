@@ -26,6 +26,7 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY", "sk-placeholder-for-tests"))
 
 ROUTING_MODEL = os.getenv("ROUTING_MODEL", "gpt-4o-mini")      # scoring, classification, routing
 GENERATION_MODEL = os.getenv("GENERATION_MODEL", "gpt-4o-mini")  # customer-facing copy
+WEB_SEARCH_MODEL = os.getenv("WEB_SEARCH_MODEL", "gpt-4o")  
 
 
 def ask(prompt, model=GENERATION_MODEL, max_tokens=500, temperature=0.5, system_prompt=None):
@@ -57,3 +58,33 @@ def ask_json(prompt, system_prompt=None, model=ROUTING_MODEL, max_tokens=700, te
     except json.JSONDecodeError:
         print("Warning: model did not return valid JSON:", raw)
         return {}
+
+def web_search(query: str, user_location: dict = None, allowed_domains: list = None) -> str:
+    """
+    Real, live web search via OpenAI's hosted web_search tool (Responses
+    API) - this replaces the old hardcoded company pools entirely. The
+    model both searches and reads the results, returning prose grounded in
+    live data (with citations attached internally). This is a genuinely
+    different, and more expensive, kind of call than ask()/ask_json() - it
+    costs a flat per-call fee on top of normal token costs, so callers
+    should be deliberate about how often they invoke it (see
+    guardrails.MAX_WEB_SEARCHES_PER_SOURCE_RUN).
+ 
+    user_location: optional dict like {"country": "NG", "city": "Lagos"} -
+    nudges results toward that region without guaranteeing exact filtering,
+    since arbitrary cities aren't a hard geographic filter on OpenAI's side.
+    Passing the location directly in `query` text is usually just as
+    effective and is what search_web_leads() actually relies on.
+    """
+    tool_config = {"type": "web_search"}
+    if user_location:
+        tool_config["user_location"] = {"type": "approximate", **user_location}
+    if allowed_domains:
+        tool_config["filters"] = {"allowed_domains": allowed_domains}
+ 
+    response = client.responses.create(
+        model=WEB_SEARCH_MODEL,
+        tools=[tool_config],
+        input=query,
+    )
+    return response.output_text

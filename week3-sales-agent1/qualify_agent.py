@@ -42,7 +42,9 @@ def _fetch_missing_fields(lead: dict) -> dict:
     missing = should_fetch_more(lead, REQUIRED_FIELDS)
     if not missing:
         return lead
-    ok, result = execute_tool("enrich_company", {"company": lead.get("company", "unknown")})
+    ok, result = execute_tool("enrich_company", {
+        "company": lead.get("company", "unknown"), "industry": lead.get("industry"),
+    })
     return {**lead, **result} if ok else lead
 
 
